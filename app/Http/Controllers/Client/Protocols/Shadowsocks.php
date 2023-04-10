@@ -7,11 +7,13 @@ class Shadowsocks
     public $flag = 'shadowsocks';
     private $servers;
     private $user;
+    private $xray_enable;
 
-    public function __construct($user, $servers)
+    public function __construct($user, $servers, $xray_enable)
     {
         $this->user = $user;
         $this->servers = $servers;
+        $this->xray_enable = $xray_enable;
     }
 
     public function handle()

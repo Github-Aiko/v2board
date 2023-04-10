@@ -9,11 +9,13 @@ class Shadowrocket
     public $flag = 'shadowrocket';
     private $servers;
     private $user;
+    private $xray_enable;
 
-    public function __construct($user, $servers)
+    public function __construct($user, $servers, $xray_enable)
     {
         $this->user = $user;
         $this->servers = $servers;
+        $this->xray_enable = $xray_enable;
     }
 
     public function handle()
@@ -33,7 +35,7 @@ class Shadowrocket
                 $uri .= self::buildShadowsocks($user['uuid'], $item);
             }
             if ($item['type'] === 'v2ray') {
-                $uri .= self::buildVmess($user['uuid'], $item);
+                $uri .= self::buildV2ray($user['uuid'], $item, $this->xray_enable);
             }
             if ($item['type'] === 'trojan') {
                 $uri .= self::buildTrojan($user['uuid'], $item);
@@ -64,18 +66,23 @@ class Shadowrocket
         return "ss://{$str}@{$server['host']}:{$server['port']}#{$name}\r\n";
     }
 
-    public static function buildVmess($uuid, $server)
+    public static function buildV2ray($uuid, $server, $xray_enable)
     {
+        if ($server['protocol'] === 'vmess_compatible')
+            return ;
         $userinfo = base64_encode('auto:' . $uuid . '@' . $server['host'] . ':' . $server['port']);
         $config = [
             'tfo' => 1,
-            'remark' => $server['name'],
-            'alterId' => 0
+            'remark' => $server['name']
         ];
+        if ($server['protocol'] === 'vmess')
+            $config['alterId'] = 0;
         if ($server['tls']) {
             $config['tls'] = 1;
             if ($server['tlsSettings']) {
                 $tlsSettings = $server['tlsSettings'];
+                if (($server['protocol'] === 'auto' || $server['protocol'] === 'vless') && isset($tlsSettings['xtls']) && !empty($tlsSettings['xtls']))
+                    $config['xtls'] = (int)$tlsSettings['xtls'];
                 if (isset($tlsSettings['allowInsecure']) && !empty($tlsSettings['allowInsecure']))
                     $config['allowInsecure'] = (int)$tlsSettings['allowInsecure'];
                 if (isset($tlsSettings['serverName']) && !empty($tlsSettings['serverName']))
@@ -106,7 +113,7 @@ class Shadowrocket
             }
         }
         $query = http_build_query($config, '', '&', PHP_QUERY_RFC3986);
-        $uri = "vmess://{$userinfo}?{$query}";
+        $uri = (($server['protocol'] === 'auto') ? "vless" : $server['protocol']) . "://{$userinfo}?{$query}";
         $uri .= "\r\n";
         return $uri;
     }
@@ -116,7 +123,8 @@ class Shadowrocket
         $name = rawurlencode($server['name']);
         $query = http_build_query([
             'allowInsecure' => $server['allow_insecure'],
-            'peer' => $server['server_name']
+            'peer' => $server['server_name'],
+            'xtls' => $server['xtls']
         ]);
         $uri = "trojan://{$password}@{$server['host']}:{$server['port']}?{$query}&tfo=1#{$name}";
         $uri .= "\r\n";

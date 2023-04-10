@@ -15,6 +15,7 @@ class ClientController extends Controller
         $flag = $request->input('flag')
             ?? ($_SERVER['HTTP_USER_AGENT'] ?? '');
         $flag = strtolower($flag);
+        $xray_enable = $request->input('xray') ? true : false;
         $user = $request->user;
         // account not expired and is not banned.
         $userService = new UserService();
@@ -25,14 +26,14 @@ class ClientController extends Controller
             if ($flag) {
                 foreach (glob(app_path('Http//Controllers//Client//Protocols') . '/*.php') as $file) {
                     $file = 'App\\Http\\Controllers\\Client\\Protocols\\' . basename($file, '.php');
-                    $class = new $file($user, $servers);
+                    $class = new $file($user, $servers, $xray_enable);
                     if (strpos($flag, $class->flag) !== false) {
                         die($class->handle());
                     }
                 }
             }
             // todo 1.5.3 remove
-            $class = new V2rayN($user, $servers);
+            $class = new V2rayN($user, $servers, $xray_enable);
             die($class->handle());
             die('该客户端暂不支持进行订阅');
         }

@@ -9,11 +9,13 @@ class Stash
     public $flag = 'stash';
     private $servers;
     private $user;
+    private $xray_enable;
 
-    public function __construct($user, $servers)
+    public function __construct($user, $servers, $xray_enable)
     {
         $this->user = $user;
         $this->servers = $servers;
+        $this->xray_enable = $xray_enable;
     }
 
     public function handle()
@@ -48,8 +50,11 @@ class Stash
                 array_push($proxies, $item['name']);
             }
             if ($item['type'] === 'v2ray') {
-                array_push($proxy, self::buildVmess($user['uuid'], $item));
-                array_push($proxies, $item['name']);
+                $v2ray = self::buildV2ray($user['uuid'], $item, $this->xray_enable);
+                if ($v2ray) {
+                    array_push($proxy, $v2ray);
+                    array_push($proxies, $item['name']);
+                }
             }
             if ($item['type'] === 'trojan') {
                 array_push($proxy, self::buildTrojan($user['uuid'], $item));
@@ -98,22 +103,28 @@ class Stash
         return $array;
     }
 
-    public static function buildVmess($uuid, $server)
+    public static function buildV2ray($uuid, $server, $xray_enable)
     {
+        if ($server['protocol'] === 'vmess_compatible')
+            return ;
         $array = [];
         $array['name'] = $server['name'];
-        $array['type'] = 'vmess';
+        $array['type'] = ($server['protocol'] === 'auto') ? "vless" : $server['protocol'];
         $array['server'] = $server['host'];
         $array['port'] = $server['port'];
         $array['uuid'] = $uuid;
-        $array['alterId'] = 0;
-        $array['cipher'] = 'auto';
+        if ($server['protocol'] === 'vmess') {
+            $array['alterId'] = 0;
+            $array['cipher'] = 'auto';
+        }
         $array['udp'] = true;
 
         if ($server['tls']) {
             $array['tls'] = true;
             if ($server['tlsSettings']) {
                 $tlsSettings = $server['tlsSettings'];
+                if (($server['protocol'] === 'auto' || $server['protocol'] === 'vless') && isset($tlsSettings['xtls']) && !empty($tlsSettings['xtls'] && $tlsSettings['xtls'] === 1))
+                    $array['flow'] = 'xtls-rprx-direct';
                 if (isset($tlsSettings['allowInsecure']) && !empty($tlsSettings['allowInsecure']))
                     $array['skip-cert-verify'] = ($tlsSettings['allowInsecure'] ? true : false);
                 if (isset($tlsSettings['serverName']) && !empty($tlsSettings['serverName']))
@@ -149,6 +160,7 @@ class Stash
 
     public static function buildTrojan($password, $server)
     {
+        # 暂时未明确Stash是否支持Trojan+XTLS，故没有下发配置
         $array = [];
         $array['name'] = $server['name'];
         $array['type'] = 'trojan';

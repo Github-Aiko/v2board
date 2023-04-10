@@ -9,11 +9,13 @@ class Surge
     public $flag = 'surge';
     private $servers;
     private $user;
+    private $xray_enable;
 
-    public function __construct($user, $servers)
+    public function __construct($user, $servers, $xray_enable)
     {
         $this->user = $user;
         $this->servers = $servers;
+        $this->xray_enable = $xray_enable;
     }
 
     public function handle()
@@ -43,7 +45,7 @@ class Surge
             }
             if ($item['type'] === 'v2ray') {
                 // [Proxy]
-                $proxies .= self::buildVmess($user['uuid'], $item);
+                $proxies .= self::buildV2ray($user['uuid'], $item, $this->xray_enable);
                 // [Proxy Group]
                 $proxyGroup .= $item['name'] . ', ';
             }
@@ -102,8 +104,10 @@ class Surge
         return $uri;
     }
 
-    public static function buildVmess($uuid, $server)
+    public static function buildV2ray($uuid, $server, $xray_enable)
     {
+        if ($server['protocol'] !== 'auto' && $server['protocol'] !== 'vmess' && $server['protocol'] !== 'vmess_compatible')
+            return ;
         $config = [
             "{$server['name']}=vmess",
             "{$server['host']}",

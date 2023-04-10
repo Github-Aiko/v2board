@@ -11,11 +11,13 @@ class Clash
     public $flag = 'clash';
     private $servers;
     private $user;
+    private $xray_enable;
 
-    public function __construct($user, $servers)
+    public function __construct($user, $servers, $xray_enable)
     {
         $this->user = $user;
         $this->servers = $servers;
+        $this->xray_enable = $xray_enable;
     }
 
     public function handle()
@@ -50,8 +52,11 @@ class Clash
                 array_push($proxies, $item['name']);
             }
             if ($item['type'] === 'v2ray') {
-                array_push($proxy, self::buildVmess($user['uuid'], $item));
-                array_push($proxies, $item['name']);
+                $v2ray = self::buildV2ray($user['uuid'], $item, $this->xray_enable);
+                if ($v2ray) {
+                    array_push($proxy, $v2ray);
+                    array_push($proxies, $item['name']);
+                }
             }
             if ($item['type'] === 'trojan') {
                 array_push($proxy, self::buildTrojan($user['uuid'], $item));
@@ -100,11 +105,19 @@ class Clash
         return $array;
     }
 
-    public static function buildVmess($uuid, $server)
+    public static function buildV2ray($uuid, $server, $xray_enable)
     {
+        if (
+            $xray_enable !== false && $server['protocol'] === 'vmess_compatible'
+            || $xray_enable !== true && $server['protocol'] === 'vless'
+        )
+            return ;
         $array = [];
         $array['name'] = $server['name'];
-        $array['type'] = 'vmess';
+        if ($server['protocol'] === 'vless' || $server['protocol'] === 'auto' && $xray_enable === true)
+            $array['type'] = 'vless';
+        else
+            $array['type'] = 'vmess';
         $array['server'] = $server['host'];
         $array['port'] = $server['port'];
         $array['uuid'] = $uuid;
@@ -116,6 +129,13 @@ class Clash
             $array['tls'] = true;
             if ($server['tlsSettings']) {
                 $tlsSettings = $server['tlsSettings'];
+                if (
+                    ($server['protocol'] === 'vless' || $server['protocol'] === 'auto' && $xray_enable === true)
+                    && isset($tlsSettings['xtls'])
+                    && !empty($tlsSettings['xtls'])
+                    && $tlsSettings['xtls'] === 1
+                )
+                    $array['flow'] = 'xtls-rprx-direct';
                 if (isset($tlsSettings['allowInsecure']) && !empty($tlsSettings['allowInsecure']))
                     $array['skip-cert-verify'] = ($tlsSettings['allowInsecure'] ? true : false);
                 if (isset($tlsSettings['serverName']) && !empty($tlsSettings['serverName']))

@@ -45,7 +45,7 @@ class AppController extends Controller
                 array_push($proxies, $item['name']);
             }
             if ($item['type'] === 'v2ray') {
-                array_push($proxy, Protocols\Clash::buildVmess($user['uuid'], $item));
+                array_push($proxy, Protocols\Clash::buildV2ray($user['uuid'], $item));
                 array_push($proxies, $item['name']);
             }
             if ($item['type'] === 'trojan') {
