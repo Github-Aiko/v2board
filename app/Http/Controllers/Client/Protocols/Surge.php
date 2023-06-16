@@ -9,13 +9,11 @@ class Surge
     public $flag = 'surge';
     private $servers;
     private $user;
-    private $xray_enable;
 
-    public function __construct($user, $servers, $xray_enable)
+    public function __construct($user, $servers)
     {
         $this->user = $user;
         $this->servers = $servers;
-        $this->xray_enable = $xray_enable;
     }
 
     public function handle()
@@ -43,9 +41,9 @@ class Surge
                 // [Proxy Group]
                 $proxyGroup .= $item['name'] . ', ';
             }
-            if ($item['type'] === 'v2ray') {
+            if ($item['type'] === 'vmess') {
                 // [Proxy]
-                $proxies .= self::buildV2ray($user['uuid'], $item, $this->xray_enable);
+                $proxies .= self::buildVmess($user['uuid'], $item);
                 // [Proxy Group]
                 $proxyGroup .= $item['name'] . ', ';
             }
@@ -67,7 +65,7 @@ class Surge
 
         // Subscription link
         $subsURL = Helper::getSubscribeUrl("/api/v1/client/subscribe?token={$user['token']}");
-        $subsDomain = $_SERVER['SERVER_NAME'];
+        $subsDomain = $_SERVER['HTTP_HOST'];
         $subsURL = 'https://' . $subsDomain . '/api/v1/client/subscribe?token=' . $user['token'];
 
         $config = str_replace('$subs_link', $subsURL, $config);
@@ -104,10 +102,8 @@ class Surge
         return $uri;
     }
 
-    public static function buildV2ray($uuid, $server, $xray_enable)
+    public static function buildVmess($uuid, $server)
     {
-        if ($server['protocol'] !== 'auto' && $server['protocol'] !== 'vmess' && $server['protocol'] !== 'vmess_compatible')
-            return ;
         $config = [
             "{$server['name']}=vmess",
             "{$server['host']}",

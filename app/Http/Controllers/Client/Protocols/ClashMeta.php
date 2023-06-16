@@ -7,16 +7,14 @@ use Symfony\Component\Yaml\Yaml;
 
 class ClashMeta
 {
-    public $flag = 'clashmeta';
+    public $flag = 'meta';
     private $servers;
     private $user;
-    private $xray_enable;
 
-    public function __construct($user, $servers, $xray_enable)
+    public function __construct($user, $servers)
     {
         $this->user = $user;
         $this->servers = $servers;
-        $this->xray_enable = $xray_enable;
     }
 
     public function handle()
@@ -42,12 +40,9 @@ class ClashMeta
                 array_push($proxy, self::buildShadowsocks($user['uuid'], $item));
                 array_push($proxies, $item['name']);
             }
-            if ($item['type'] === 'v2ray') {
-                $v2ray = self::buildV2ray($user['uuid'], $item, $this->xray_enable);
-                if ($v2ray) {
-                    array_push($proxy, $v2ray);
-                    array_push($proxies, $item['name']);
-                }
+            if ($item['type'] === 'vmess') {
+                array_push($proxy, self::buildVmess($user['uuid'], $item));
+                array_push($proxies, $item['name']);
             }
             if ($item['type'] === 'trojan') {
                 array_push($proxy, self::buildTrojan($user['uuid'], $item));
@@ -73,12 +68,17 @@ class ClashMeta
             if ($isFilter) continue;
             $config['proxy-groups'][$k]['proxies'] = array_merge($config['proxy-groups'][$k]['proxies'], $proxies);
         }
+        $config['proxy-groups'] = array_filter($config['proxy-groups'], function($group) {
+            return $group['proxies'];
+        });
+        $config['proxy-groups'] = array_values($config['proxy-groups']);
         // Force the current subscription domain to be a direct rule
-        $subsDomain = $_SERVER['SERVER_NAME'];
-        $subsDomainRule = "DOMAIN,{$subsDomain},DIRECT";
-        array_unshift($config['rules'], $subsDomainRule);
+        $subsDomain = $_SERVER['HTTP_HOST'];
+        if ($subsDomain) {
+            array_unshift($config['rules'], "DOMAIN,{$subsDomain},DIRECT");
+        }
 
-        $yaml = Yaml::dump($config);
+        $yaml = Yaml::dump($config, 2, 4, Yaml::DUMP_EMPTY_ARRAY_AS_SEQUENCE);
         $yaml = str_replace('$app_name', config('v2board.app_name', 'V2Board'), $yaml);
         return $yaml;
     }
@@ -86,12 +86,12 @@ class ClashMeta
     public static function buildShadowsocks($password, $server)
     {
         if ($server['cipher'] === '2022-blake3-aes-128-gcm') {
-            $serverKey = Helper::getShadowsocksServerKey($server['created_at'], 16);
+            $serverKey = Helper::getServerKey($server['created_at'], 16);
             $userKey = Helper::uuidToBase64($password, 16);
             $password = "{$serverKey}:{$userKey}";
         }
         if ($server['cipher'] === '2022-blake3-aes-256-gcm') {
-            $serverKey = Helper::getShadowsocksServerKey($server['created_at'], 32);
+            $serverKey = Helper::getServerKey($server['created_at'], 32);
             $userKey = Helper::uuidToBase64($password, 32);
             $password = "{$serverKey}:{$userKey}";
         }
@@ -106,36 +106,32 @@ class ClashMeta
         return $array;
     }
 
-    public static function buildV2ray($uuid, $server, $xray_enable)
+    public static function buildVmess($uuid, $server)
     {
-        if ($server['protocol'] === 'vmess_compatible')
-            return ;
         $array = [];
         $array['name'] = $server['name'];
-        if ($server['protocol'] === 'auto')
-            $array['type'] = 'vless';
-        else
-            $array['type'] = $server['protocol'];
+        $array['type'] = 'vmess';
         $array['server'] = $server['host'];
         $array['port'] = $server['port'];
         $array['uuid'] = $uuid;
-        if ($server['protocol'] === 'vmess') {
-            $array['alterId'] = 0;
-            $array['cipher'] = 'auto';
-        }
+        $array['alterId'] = 0;
+        $array['cipher'] = 'auto';
         $array['udp'] = true;
 
         if ($server['tls']) {
             $array['tls'] = true;
             if ($server['tlsSettings']) {
                 $tlsSettings = $server['tlsSettings'];
-                if (($server['protocol'] === 'auto' || $server['protocol'] === 'vless') && isset($tlsSettings['xtls']) && !empty($tlsSettings['xtls'] && $tlsSettings['xtls'] === 1))
-                    $array['flow'] = 'xtls-rprx-direct';
                 if (isset($tlsSettings['allowInsecure']) && !empty($tlsSettings['allowInsecure']))
                     $array['skip-cert-verify'] = ($tlsSettings['allowInsecure'] ? true : false);
                 if (isset($tlsSettings['serverName']) && !empty($tlsSettings['serverName']))
                     $array['servername'] = $tlsSettings['serverName'];
             }
+        }
+        if ($server['network'] === 'tcp') {
+            $tcpSettings = $server['networkSettings'];
+            if (isset($tcpSettings['header']['type'])) $array['network'] = $tcpSettings['header']['type'];
+            if (isset($tcpSettings['header']['request']['path'][0])) $array['http-opts']['path'] = $tcpSettings['header']['request']['path'][0];
         }
         if ($server['network'] === 'ws') {
             $array['network'] = 'ws';
@@ -166,7 +162,6 @@ class ClashMeta
 
     public static function buildTrojan($password, $server)
     {
-        # 暂时未明确ClashMeta是否支持Trojan+XTLS，故没有下发配置
         $array = [];
         $array['name'] = $server['name'];
         $array['type'] = 'trojan';

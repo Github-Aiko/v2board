@@ -7,13 +7,11 @@ class SagerNet
     public $flag = 'sagernet';
     private $servers;
     private $user;
-    private $xray_enable;
 
-    public function __construct($user, $servers, $xray_enable)
+    public function __construct($user, $servers)
     {
         $this->user = $user;
         $this->servers = $servers;
-        $this->xray_enable = $xray_enable;
     }
 
     public function handle()
@@ -23,8 +21,8 @@ class SagerNet
         $uri = '';
 
         foreach ($servers as $item) {
-            if ($item['type'] === 'v2ray') {
-                $uri .= self::buildV2ray($user['uuid'], $item, $this->xray_enable);
+            if ($item['type'] === 'vmess') {
+                $uri .= self::buildVmess($user['uuid'], $item);
             }
             if ($item['type'] === 'shadowsocks') {
                 $uri .= self::buildShadowsocks($user['uuid'], $item);
@@ -60,10 +58,8 @@ class SagerNet
         return $config;
     }
 
-    public static function buildV2ray($uuid, $server, $xray_enable)
+    public static function buildVmess($uuid, $server)
     {
-        if ($server['protocol'] === 'vmess_compatible')
-            return ;
         $config = [
             "encryption" => "none",
             "type" => urlencode($server['network']),
@@ -76,6 +72,11 @@ class SagerNet
                     $config['sni'] = urlencode($tlsSettings['serverName']);
             }
         }
+        if ((string)$server['network'] === 'tcp') {
+            $tcpSettings = $server['networkSettings'];
+            if (isset($tcpSettings['header']['type'])) $config['type'] = $tcpSettings['header']['type'];
+            if (isset($tcpSettings['header']['request']['path'][0])) $config['path'] = $tcpSettings['header']['request']['path'][0];
+        }
         if ((string)$server['network'] === 'ws') {
             $wsSettings = $server['networkSettings'];
             if (isset($wsSettings['path'])) $config['path'] = $wsSettings['path'];
@@ -85,7 +86,7 @@ class SagerNet
             $grpcSettings = $server['networkSettings'];
             if (isset($grpcSettings['serviceName'])) $config['serviceName'] = urlencode($grpcSettings['serviceName']);
         }
-        return (($server['protocol'] === 'auto') ? "vless" : $server['protocol']) . "://" . $uuid . "@" . $server['host'] . ":" . $server['port'] . "?" . http_build_query($config) . "#" . urlencode($server['name']) . "\r\n";
+        return "vmess://" . $uuid . "@" . $server['host'] . ":" . $server['port'] . "?" . http_build_query($config) . "#" . urlencode($server['name']) . "\r\n";
     }
 
     public static function buildTrojan($uuid, $server)
