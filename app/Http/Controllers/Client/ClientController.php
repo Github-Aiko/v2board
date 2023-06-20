@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Client;
 
-use App\Http\Controllers\Client\Protocols\V2rayN;
+use App\Http\Controllers\Client\Protocols\General;
+use App\Http\Controllers\Client\SNI;
 use App\Http\Controllers\Controller;
 use App\Services\ServerService;
+use App\Utils\Helper;
 use Illuminate\Http\Request;
 use App\Services\UserService;
 
@@ -16,47 +18,51 @@ class ClientController extends Controller
             ?? ($_SERVER['HTTP_USER_AGENT'] ?? '');
         $flag = strtolower($flag);
         $user = $request->user;
-        // account not expired and is not banned.
         $userService = new UserService();
         if ($userService->isAvailable($user)) {
             $serverService = new ServerService();
             $servers = $serverService->getAvailableServers($user);
             $this->setSubscribeInfoToServers($servers, $user);
             if ($flag) {
-                foreach (glob(app_path('Http//Controllers//Client//Protocols') . '/*.php') as $file) {
-                    $file = 'App\\Http\\Controllers\\Client\\Protocols\\' . basename($file, '.php');
-                    $class = new $file($user, $servers);
-                    if (strpos($flag, $class->flag) !== false) {
+                    if ($flag === 'sni') {
+                        $sniValue = $request->input('sni');
+                        $class = new SNI($user, $sniValue);
                         die($class->handle());
+                    } else {
+                    foreach (array_reverse(glob(app_path('Http//Controllers//Client//Protocols') . '/*.php')) as $file) {
+                        $file = 'App\\Http\\Controllers\\Client\\Protocols\\' . basename($file, '.php');
+                        $class = new $file($user, $servers);
+                        if (strpos($flag, $class->flag) !== false) {
+                            die($class->handle());
+                        }
                     }
                 }
             }
-            // todo 1.5.3 remove
-            $class = new V2rayN($user, $servers);
+            $class = new General($user, $servers);
             die($class->handle());
-            die('该客户端暂不支持进行订阅');
         }
     }
 
     private function setSubscribeInfoToServers(&$servers, $user)
     {
+        if (!isset($servers[0])) return;
         if (!(int)config('v2board.show_info_to_server_enable', 0)) return;
-        $useTraffic = round($user['u'] / (1024*1024*1024), 2) + round($user['d'] / (1024*1024*1024), 2);
-        $totalTraffic = round($user['transfer_enable'] / (1024*1024*1024), 2);
-        $remainingTraffic = $totalTraffic - $useTraffic;
-        $expiredDate = $user['expired_at'] ? date('Y-m-d', $user['expired_at']) : '长期有效';
+        $useTraffic = $user['u'] + $user['d'];
+        $totalTraffic = $user['transfer_enable'];
+        $remainingTraffic = Helper::trafficConvert($totalTraffic - $useTraffic);
+        $expiredDate = $user['expired_at'] ? date('Y-m-d', $user['expired_at']) : 'No expiration';
         $userService = new UserService();
         $resetDay = $userService->getResetDay($user);
         array_unshift($servers, array_merge($servers[0], [
-            'name' => "套餐到期：{$expiredDate}",
+            'name' => "Expired at {$expiredDate}",
         ]));
         if ($resetDay) {
             array_unshift($servers, array_merge($servers[0], [
-                'name' => "距离下次重置剩余：{$resetDay} 天",
+                'name' => "Reset usage after {$resetDay} day(s)",
             ]));
         }
         array_unshift($servers, array_merge($servers[0], [
-            'name' => "剩余流量：{$remainingTraffic} GB",
+            'name' => "Remain: {$remainingTraffic}",
         ]));
     }
 }
